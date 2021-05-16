@@ -9,11 +9,11 @@ Implemented by Maria Andromachi Kolyvaki
 
 ### Deep Graph Mapper and MPR Pooling layers
 Implemnted by Simone Eandi. Both layers have been implemented as new branches in a fork of the Pytorch Geometric repository.
-1. The Deep Graph Mapper layer is in the `dgm` branch of https://github.com/seandi/pytorch_geometric. New/modified files are:
+1. The Deep Graph Mapper layer is in the `dgm` branch of the [forked repo](https://github.com/seandi/pytorch_geometric). New/modified files are:
     - `torch_geometric/nn/models/deep_graph_mapper.py` (the `dgm` layer)
     - `torch_geometric/nn/models/__init__.py` (import `dgm`)
     - `setup.py` (new dependencies)
-2. The MPR Pooling layer implementation is instead in the `mpr_pooling` branch of https://github.com/seandi/pytorch_geometric.
+2. The MPR Pooling layer implementation is instead in the `mpr_pooling` branch of the [forked repo](https://github.com/seandi/pytorch_geometric).
    The following are the contributed files:
    - `torch_geometric/nn/dense/mpr_pool.py` (the `MPRPooling` layer)
    - `torch_geometric/nn/dense/__init__.py` (import `MPRPooling`)
