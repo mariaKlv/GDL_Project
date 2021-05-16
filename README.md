@@ -5,7 +5,11 @@ Git Repository for Final Project in GDL course
 Implemented by Jose Ezequiel Castro Elizondo
 
 ### Clique Pooling layer
-Implemented by Maria Andromachi Kolyvaki
+Implemented by Maria Andromachi Kolyvaki.
+The contributed files for the implementation of the Clique Pooling Layer are the following:
+- `clique_pooling/CliquePoolingLayer.py` (the `clique` layer)
+- `clique_pooling/GDL_Clique_Pooling.ipynb` (the python notebook containg all the testing)
+- `clique_pooling/CliquePooling_report.pdf` (report for the implemented layer)
 
 ### Deep Graph Mapper and MPR Pooling layers
 Implemnted by Simone Eandi. Both layers have been implemented as new branches in a fork of the Pytorch Geometric repository.
