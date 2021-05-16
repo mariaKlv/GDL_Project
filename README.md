@@ -3,6 +3,10 @@ Git Repository for Final Project in GDL course
 
 ### Laplace Pooling layer
 Implemented by Jose Ezequiel Castro Elizondo
+The files included are:
+- `LaPool/LaPool.py` (The main Pooling layer)
+- `LaPool/LaPool_example.ipyn` (notebook showing how to use the layer)
+- `LaPool/Laplacian_Pooling_doc` (report of the layer)
 
 ### Clique Pooling layer
 Implemented by Maria Andromachi Kolyvaki.
