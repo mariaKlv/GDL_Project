@@ -5,7 +5,7 @@ Git Repository for Final Project in GDL course
 Implemented by Jose Ezequiel Castro Elizondo
 
 ### Clique Pooling layer
-Implemented by Maria Andromachi Kolyvaki.\\
+Implemented by Maria Andromachi Kolyvaki.
 The contributed files for the implementation of the Clique Pooling Layer are the following:
 - `clique_pooling/CliquePoolingLayer.py` (the `clique` layer)
 - `clique_pooling/GDL_Clique_Pooling.ipynb` (the python notebook containg all the testing)
