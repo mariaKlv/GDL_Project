@@ -7,6 +7,7 @@ The files included are:
 - `LaPool/LaPool.py` (The main Pooling layer)
 - `LaPool/LaPool_example.ipyn` (notebook showing how to use the layer)
 - `LaPool/Laplacian_Pooling_doc` (report of the layer)
+-  `LaPool/Model.zip` (implementation of lapool with base on zhang 2019 implementation of Hierarchical Graph Pooling with Structure Learning (HGP-SL))
 
 ### Clique Pooling layer
 Implemented by Maria Andromachi Kolyvaki.
