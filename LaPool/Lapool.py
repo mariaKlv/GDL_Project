@@ -60,57 +60,7 @@ class NetM(torch.nn.Module):
         return F.log_softmax(x, dim=1)
         return x
 
-######
-class GCNConv(MessagePassing):
-    '''
-    This network is courtesy of:
-    Stern, Fabian. “Program a Simple Graph Net in PyTorch.” 
-    Medium, Towards Data Science, 22 May 2020, 
-    towardsdatascience.com/program-a-simple-graph-net-in-pytorch-e00b500a642d.
-    '''
-    def __init__(self, in_channels, out_channels):
-        super(GCNConv, self).__init__(aggr='add')
-        self.lin = torch.nn.Linear(in_channels, out_channels)
 
-    def forward(self, x, edge_index):
-        # Step 1: Add self-loops
-        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
-
-        # Step 2: Multiply with weights
-        x = self.lin(x)
-
-        # Step 3: Calculate the normalization
-        row, col = edge_index
-        deg = degree(row, x.size(0), dtype=x.dtype)
-        deg_inv_sqrt = deg.pow(-0.5)
-        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
-
-        # Step 4: Propagate the embeddings to the next layer
-        return self.propagate(edge_index, size=(x.size(0), x.size(0)), x=x,
-                              norm=norm)
-
-    def message(self, x_j, norm):
-        # Normalize node features.
-        return norm.view(-1, 1) * x_j
-
-class Net(torch.nn.Module):
-    def __init__(self, dsize):
-        super(Net, self).__init__()
-        self.conv1 = GCNConv(dsize, round(dsize/2))#dataset.num_node_features
-        self.conv2 = GCNConv(round(dsize/2), dsize)
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        #print("Gconv -> conv1")
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        #print("Gconv -> conv2")
-        x = self.conv2(x, edge_index)
-        #print("Gconv -> softmax")
-        return F.log_softmax(x, dim=1)
-        return x
-    
 #########=========#####
 class LaPool():
     def __init__(self,use_shortestPath = True):
@@ -126,6 +76,8 @@ class LaPool():
         self.is_reducible = True
         self.use_shortest_path = use_shortestPath
         self.reduction_count = 0
+        self.edge_batch_count = 0
+        self.edge_reduced_batch_count = 0
         
     #Graph
     def getAdjacencyMatrix(self):
@@ -145,7 +97,8 @@ class LaPool():
     
     def __CreateGraph(self,data):
         #return to_networkx(data, edge_attrs=['weight'],remove_self_loops=True)
-        return to_networkx(data, edge_attrs=['edge_weight'],remove_self_loops=True)
+        #return to_networkx(data, edge_attrs=['edge_weight'],remove_self_loops=True)
+        return to_networkx(data, remove_self_loops=True)
     
     def __GraphToTorch(self, G):
         return from_networkx(G)
@@ -199,6 +152,7 @@ class LaPool():
         
         ### Signal intensities computation ###
         edges = self.data.edge_index.tolist() #tensor to list
+        edges_temp = edges.copy()
         si_list = [0]*self.data.num_nodes #empty list of signal intensities
         
         x_l0 = np.zeros((self.data.num_nodes, self.data.x.shape[1]))
@@ -208,6 +162,9 @@ class LaPool():
             #2-norm to get s_i
             x = self.data.x[e] - self.data.x[next_node]
             si_list[e] += math.sqrt(x@x)
+            
+            
+            
         
         ### Dynamic selection of centers ###
         temp_bool_list = [True]*self.data.num_nodes
@@ -216,11 +173,13 @@ class LaPool():
         #print("Lapool -> _Pool() -> compare if current node is greater than neighbors")
         for i,e in enumerate(edges[0]):
             next_node = edges[1][i]
+            
             if (si_list[e] > si_list[next_node]) and temp_bool_list[e] != False :
                 temp_bool_list[e] = True 
             else:
                 temp_bool_list[e] = False
                 continue
+            
         
         #output of this section
         V_c = np.where(temp_bool_list)[0] #new centers
@@ -229,6 +188,17 @@ class LaPool():
         
         if not self.is_reducible:
             #print("NOT FURTHER REDUCIBLE")
+            #offset due to batching 
+            self.data.edge_index += self.edge_reduced_batch_count
+            self.edge_reduced_batch_count += self.data.num_nodes
+            
+            
+            A = self.getAdjacencyMatrix()
+            self.data.edge_index, self.data.edge_weight = self.__AdjToEdge(sparse.csr_matrix(A))
+        
+            #data conversion
+            self.data.edge_weight = self.data.edge_weight.type(torch.FloatTensor)
+            self.data.edge_index = self.data.edge_index.type(torch.LongTensor)
             return self.data #the graph cannot be further reduced
         
         
@@ -241,7 +211,10 @@ class LaPool():
         #x_l = self.msgNet.forward(self.data.edge_index,
         #                          self.data.x, 
         #                          self.data.edge_weight)
-        x_l = self.msgNet(self.data)
+        
+        
+        #x_l = self.msgNet(self.data)
+        x_l = self.data.x
         x_l = np.array(x_l.detach().numpy())
         
         ### Nodes to cluster mapping ###
@@ -293,12 +266,24 @@ class LaPool():
         
         #print("Lapool -> _Pool() -> scipy")
         self.data.edge_index, self.data.edge_weight = self.__AdjToEdge(sparse.csr_matrix(An))
+        #self.data.edge_index, _ = self.__AdjToEdge(sparse.csr_matrix(An))
+        
+        
+        #extract weights
+        #ttemp = torch.tensor([self.data.edge_weight.detach().numpy()[i] for i in V_c])
+        #self.data.edge_weight = ttemp
         
         #print("Lapool -> _Pool() -> new embedding")
         self.data.x = torch.FloatTensor(np.transpose(C))@torch.FloatTensor(x_l)
         
         #print("Lapool -> _Pool() -> new embedding -> Conv")
-        self.data.x = self.Gconv(self.data)
+        #self.data.x = self.Gconv(self.data)
+        self.data.x = self.msgNet(self.data)
+        
+        
+        #offset due to batching 
+        self.data.edge_index += self.edge_reduced_batch_count
+        self.edge_reduced_batch_count += k #offset of number of centroids
         
         #data conversion
         self.data.edge_weight = self.data.edge_weight.type(torch.FloatTensor)
@@ -332,18 +317,66 @@ class LaPool():
         data = Data(x=x, edge_index=edge, edge_weight=weight, batch=batch)
         
         self.msgNet = NetM(data.num_node_features) 
-        self.Gconv = Net(data.num_node_features)
+        #self.Gconv = Net(data.num_node_features)
+        
+        #Prepare for batch processing
+        btemp = list(data.batch.detach().numpy())
+
+        sets = set(btemp)
+        batches = list(sets)
+        row, col = data.edge_index
+        #edge_batch = list(data.batch[row].detach().numpy())
+        edge_batch_r = list(data.batch[row].detach().numpy())
+        edge_batch_c = list(data.batch[col].detach().numpy())
+
+        xxcat = torch.tensor([])
+        eecat = torch.tensor([])
+        wwcat = torch.tensor([])
+        bbcat = torch.tensor([])
+
+        dstop = 0
+        dstop_edges = 0
+        self.edge_batch_count = 0
+        self.edge_reduced_batch_count = 0
         
         
-        self.data = data
+        for i in batches:
+            
+            xin = np.where(np.array(btemp) == i)
+            #ein = np.where(np.array(edge_batch) == i)
+            xein_r = np.where(np.array(edge_batch_r) == i)
+            xein_c = np.where(np.array(edge_batch_c) == i)
+            ein = np.array(np.intersect1d(xein_r, xein_c))
+            #print("batch division",ein)
+            
+            xx = data.x[xin]
+            #ee = data.edge_index[:,ein[0]] - self.edge_batch_count
+            ee = data.edge_index[:,ein] - self.edge_batch_count
+            ww = data.edge_weight[ein]
+            bb = torch.tensor([i]*len(xin[0]))
+            
+            #Pooling
+            self.data = Data(x=xx, edge_index=ee, edge_weight=ww, batch=bb)
+            self.G = self.__CreateGraph(self.data) 
+            self.is_reducible = True
+            self.__Pool()
+            
+            
+            #self.ShowGraph(False)
+            #Concat
+            xxcat = torch.cat((xxcat,self.data.x),0)
+            eecat = torch.cat((eecat,self.data.edge_index),1).type(torch.LongTensor)
+            wwcat = torch.cat((wwcat,self.data.edge_weight),0).type(torch.FloatTensor)
+            bbcat = torch.cat((bbcat,self.data.batch),0).type(torch.LongTensor)
+            
+            self.edge_batch_count += len(xx[:,0])
+        #xxcat = xxcat.type(torch.LongTensor)
+        wwcat = wwcat.type(torch.FloatTensor)
+        self.data = Data(x=xxcat, edge_index=eecat, edge_weight=wwcat, batch=bbcat)
+        return xxcat, eecat, wwcat, bbcat
+        ###
         
-       
-        self.G = self.__CreateGraph(data) 
-        self.is_reducible = True
-        self.__Pool()
         
-        return self.data.x, self.data.edge_index, self.data.edge_weight, self.data.batch
-    
     ######## Bellow here are just debugging functions ####
     def demo_init(self,d, show_labels = True):
         '''
@@ -362,5 +395,4 @@ class LaPool():
         nx.draw(g, with_labels = show_labels)
         if show_labels:
             nx.draw_networkx_edge_labels(g, pos=nx.spring_layout(g))
-        
         
